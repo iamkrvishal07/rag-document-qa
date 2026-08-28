@@ -14,6 +14,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.core.config import settings
 from app.core.redis import redis_client
 
+from app.services.embedding_service import (
+    create_document_index,
+)
+
 MIN_EXTRACTABLE_TEXT_LENGTH = 50
 
 
@@ -361,6 +365,21 @@ async def process_document(
             return
 
         # Step 5 will continue from here.
+        # await update_document_metadata(
+        #     document_id,
+        #     status="processing",
+        #     status_detail="creating_embeddings",
+        #     extracted_units=len(documents),
+        #     chunk_count=len(chunks),
+        # )
+
+        # print(
+        #     f"[Document {document_id}] "
+        #     f"Extracted {len(documents)} units, "
+        #     f"created {len(chunks)} chunks."
+        # )
+
+        # Stage 3 — Embeddings
         await update_document_metadata(
             document_id,
             status="processing",
@@ -371,8 +390,32 @@ async def process_document(
 
         print(
             f"[Document {document_id}] "
-            f"Extracted {len(documents)} units, "
-            f"created {len(chunks)} chunks."
+            f"Creating embeddings for "
+            f"{len(chunks)} chunks..."
+        )
+
+        # Stage 4 — Chroma indexing
+        await update_document_metadata(
+            document_id,
+            status_detail="indexing_document",
+        )
+
+        create_document_index(
+            document_id=document_id,
+            chunks=chunks,
+        )
+
+        # Processing complete
+        await update_document_metadata(
+            document_id,
+            status="ready",
+            status_detail="ready",
+        )
+
+        print(
+            f"[Document {document_id}] "
+            f"Ready. Indexed "
+            f"{len(chunks)} chunks."
         )
 
     except Exception as exc:
