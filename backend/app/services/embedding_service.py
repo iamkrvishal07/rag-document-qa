@@ -49,3 +49,28 @@ def create_document_index(
     )
 
     return vector_store
+
+
+def get_document_vector_store(
+    document_id: str,
+) -> Chroma:
+    persist_directory = get_chroma_directory(
+        document_id
+    )
+
+    if (
+        not persist_directory.exists()
+        or not persist_directory.is_dir()
+    ):
+        raise FileNotFoundError(
+            f"Chroma index not found for "
+            f"document: {document_id}"
+        )
+
+    return Chroma(
+        collection_name=f"document_{document_id}",
+        embedding_function=get_embedding_model(),
+        persist_directory=str(
+            persist_directory
+        ),
+    )
