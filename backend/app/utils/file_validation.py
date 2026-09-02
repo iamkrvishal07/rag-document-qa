@@ -47,11 +47,22 @@ def is_file_readable(
                 filetype="pdf",
             )
 
-            document.close()
-            return True
+            try:
+                if document.needs_pass:
+                    return False
+
+                if document.page_count == 0:
+                    return False
+
+                return True
+
+            finally:
+                document.close()
 
         if extension == ".docx":
-            Document(io.BytesIO(file_bytes))
+            Document(
+                io.BytesIO(file_bytes)
+            )
             return True
 
         return False
