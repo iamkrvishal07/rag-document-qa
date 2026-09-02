@@ -3,6 +3,8 @@ import json
 import re
 from pathlib import Path
 
+import asyncio
+
 
 import fitz
 import pytesseract 
@@ -52,42 +54,6 @@ def extract_page_with_ocr(
     )
 
     return clean_text(text)
-
-
-# Pdf extraction
-
-# def extract_pdf(
-#     file_path: str,
-#     document_id: str,
-# ) -> list[Document]:
-#     documents = []
-
-#     pdf = fitz.open(file_path)
-
-#     try:
-#         for page_index, page in enumerate(pdf):
-#             text = page.get_text("text")
-#             text = clean_text(text)
-
-#             if not text:
-#                 # OCR fallback will be added shortly.
-#                 continue
-
-#             documents.append(
-#                 Document(
-#                     page_content=text,
-#                     metadata={
-#                         "document_id": document_id,
-#                         "file_type": "pdf",
-#                         "page_number": page_index + 1,
-#                     },
-#                 )
-#             )
-
-#     finally:
-#         pdf.close()
-
-#     return documents
 
 
 def extract_pdf(
@@ -332,7 +298,8 @@ async def process_document(
             status_detail="extracting_text",
         )
 
-        documents = extract_document(
+        documents = await asyncio.to_thread(
+            extract_document,
             file_path=file_path,
             file_type=file_type,
             document_id=document_id,
@@ -364,21 +331,6 @@ async def process_document(
             )
             return
 
-        # Step 5 will continue from here.
-        # await update_document_metadata(
-        #     document_id,
-        #     status="processing",
-        #     status_detail="creating_embeddings",
-        #     extracted_units=len(documents),
-        #     chunk_count=len(chunks),
-        # )
-
-        # print(
-        #     f"[Document {document_id}] "
-        #     f"Extracted {len(documents)} units, "
-        #     f"created {len(chunks)} chunks."
-        # )
-
         # Stage 3 — Embeddings
         await update_document_metadata(
             document_id,
@@ -400,16 +352,18 @@ async def process_document(
             status_detail="indexing_document",
         )
 
-        create_document_index(
+        await asyncio.to_thread(
+            create_document_index,
             document_id=document_id,
             chunks=chunks,
-        )
+        )       
 
         # Processing complete
         await update_document_metadata(
             document_id,
             status="ready",
             status_detail="ready",
+            page_count=len(documents),
         )
 
         print(
@@ -434,3 +388,62 @@ async def process_document(
             pass
 
 
+def create_document_preview(
+    *,
+    file_path: str,
+    file_type: str,
+    document_id: str,
+) -> dict:
+    documents = extract_document(
+        file_path=file_path,
+        file_type=file_type,
+        document_id=document_id,
+    )
+
+    if file_type == "pdf":
+        units = []
+
+        for document in documents:
+            units.append(
+                {
+                    "number": document.metadata[
+                        "page_number"
+                    ],
+                    "text_preview": (
+                        document.page_content[:300]
+                    ),
+                }
+            )
+
+        return {
+            "document_id": document_id,
+            "file_type": "pdf",
+            "unit": "page",
+            "total_units": len(units),
+            "units": units,
+        }
+
+    units = []
+
+    for document in documents:
+        units.append(
+            {
+                "number": document.metadata[
+                    "section_index"
+                ],
+                "heading": document.metadata.get(
+                    "section_heading"
+                ),
+                "text_preview": (
+                    document.page_content[:300]
+                ),
+            }
+        )
+
+    return {
+        "document_id": document_id,
+        "file_type": "docx",
+        "unit": "section",
+        "total_units": len(units),
+        "units": units,
+    }
